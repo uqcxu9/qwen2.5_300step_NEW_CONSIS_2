@@ -140,15 +140,15 @@ custom_reward_function:
 trainer:
   balance_batch: True
   total_epochs: 1                    # 保留为 1（steps 优先）
-  total_training_steps: 300        # 先跑 300 步，后续可接着跑到 700
+  total_training_steps: 700        # 先跑 300 步，后续可接着跑到 700
   project_name: econ_grpo
   experiment_name: qwen25_macro_micro_v11
   logger: ["console"]
   nnodes: 1
   n_gpus_per_node: 1
-  save_freq: 300                      # 每 50 步保存 checkpoint
+  save_freq: 350                      # 每 50 步保存 checkpoint
   val_before_train: False
-  test_freq: 300            # 禁用验证（超过总步数）
+  test_freq: 700            # 禁用验证（超过总步数）
   critic_warmup: 0
   resume_mode: disable               # 从头开始训练
   del_local_ckpt_after_load: False

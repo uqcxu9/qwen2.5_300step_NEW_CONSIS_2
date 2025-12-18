@@ -7,8 +7,6 @@ import random
 BR_LO = 1.8040
 BR_HI = 3.8443
 
-# Work direction 强度（保持量纲稳定：方向项 ∈ [-K_DIR, K_DIR]）
-K_DIR = 1.0
 
 # Consumption 常量（数据驱动）
 CONS_POOR = 0.5740
@@ -164,28 +162,26 @@ def compute_score(data_source, solution_str, ground_truth, extra_info, **kwargs)
 
     br = buffer_ratio
 
-# ===== Work reward: theory-guided weak prior =====
+# ===== Work reward: penalize poor-laziness only =====
     den = max(BR_HI - BR_LO, 1e-6)
     alpha = (br - BR_LO) / den
     alpha = max(0.0, min(1.0, alpha))
 
-
     work_pen = 0.0
 
-    # 极端值惩罚（只管数值稳定/胡输出，不设"最优"）
+    # 数值稳定
     if work < 0.02 or work > 0.98:
         work_pen -= 0.5
 
-    # Buffer Stock Theory: poor -> higher work, rich -> lower work (avoid tanh saturation)
-    pref = (1.0 - 2.0 * alpha)          # +1 (poor) -> -1 (rich)
-    work_center = (2.0 * work - 1.0)    # [-1,1]
-    direction_bonus = K_DIR * pref * work_center
+    # 只对"穷 + 很低 work"给连续负梯度
+    # alpha≈0 → 穷人；alpha≈1 → 富人（不管）
+    poor_strength = max(0.0, 1.0 - alpha)
 
-    # anti-plateau penalty: discourage staying near work=0.5 (no target, symmetric)
-    plateau_strength = abs(pref)   # 中间人 ≈ 0
-    plateau_pen = -0.2 * plateau_strength * (1.0 - work_center * work_center)
+    lazy_gap = 0.4 - work          # 只在 work < 0.4 时生效
+    if lazy_gap > 0:
+        work_pen -= poor_strength * (lazy_gap / 0.4)
 
-    work_reward = work_pen + direction_bonus + plateau_pen 
+    work_reward = work_pen 
 
 
     overconsume_pen = 0.0
@@ -205,6 +201,8 @@ def compute_score(data_source, solution_str, ground_truth, extra_info, **kwargs)
     
     cons_err = (consumption - cons_target) / max(CONS_MARGIN, 1e-6)
     cons_r = 1.0 - min(cons_err * cons_err, 2.0)  # cap
+    cons_center = 2.0 * consumption - 1.0
+    cons_r -= 0.05 * (1.0 - cons_center * cons_center)
 
     action_struct = cons_r
 
@@ -244,7 +242,7 @@ def compute_score(data_source, solution_str, ground_truth, extra_info, **kwargs)
 
     w_sr = W_SR
     w_work = W_WORK 
-    w_macro = W_MACRO 
+    w_macro = W_MACRO * (0.5 + 0.5 * regime_strength) 
 
     penalty_term = max(-1.0, min(0.0, penalty_raw / 0.20))
 
@@ -264,8 +262,8 @@ def compute_score(data_source, solution_str, ground_truth, extra_info, **kwargs)
                     f"[{_DEBUG_COUNT:03d}] "
                     f"sr={saving_rate:.3f} sr_r={sr_reward:.3f} | "
                     f"buf={buffer_ratio:.2f} work={work:.2f} "
-                    f"alpha={alpha:.2f} pref={pref:.2f} dir={direction_bonus:.3f} work_pen={work_pen:.3f} | "
-                    f"cons={consumption:.2f} cons_r={cons_r:.2f} | "
+                    f"alpha={alpha:.2f} poor_str={poor_strength:.2f} work_r={work_reward:.3f} | "
+                    f"cons={consumption:.2f} cons_r={cons_r:.2f} regime={regime} rs={regime_strength:.2f} | "
                     f"total={reward:.3f}\n"
                 )
         except:
